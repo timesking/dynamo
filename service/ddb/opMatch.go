@@ -18,6 +18,15 @@ import (
 	"github.com/fogfish/dynamo/v3"
 )
 
+type KeyConditionExpression[T dynamo.Thing] struct {
+	WriterOptVal interface{ WriterOpt(T) }
+}
+
+func (k KeyConditionExpression[T]) MatcherOpt(T) {}
+func (k KeyConditionExpression[T]) WriterOpt(v T) {
+	k.WriterOptVal.WriterOpt(v)
+}
+
 // Match applies a pattern matching to elements in the table
 func (db *Storage[T]) MatchKey(ctx context.Context, key dynamo.Thing, opts ...interface{ MatcherOpt(T) }) ([]T, interface{ MatcherOpt(T) }, error) {
 	gen, err := db.codec.EncodeKey(key)
@@ -76,13 +85,32 @@ func (db *Storage[T]) reqQuery(
 	opts []interface{ MatcherOpt(T) },
 ) *dynamodb.QueryInput {
 	var (
-		limit             *int32                          = nil
-		exclusiveStartKey map[string]types.AttributeValue = nil
+		limit                     *int32                          = nil
+		exclusiveStartKey         map[string]types.AttributeValue = nil
+		expressionAttributeValues map[string]types.AttributeValue = exprOf(gen)
+		expressionAttributeNames  map[string]string               = db.schema.ExpectedAttributeNames
+		keyConditionExpression    *string                         = nil
 	)
+
 	for _, opt := range opts {
 		switch v := opt.(type) {
 		case interface{ Limit() int32 }:
 			limit = aws.Int32(v.Limit())
+		case *KeyConditionExpression[T]:
+			if wopt, ok := opt.(*KeyConditionExpression[T]); ok {
+				names, values := maybeConditionExpression(&keyConditionExpression, []interface{ WriterOpt(T) }{wopt.WriterOptVal})
+				expr = expr + " and " + *keyConditionExpression
+				for k, v := range values {
+					expressionAttributeValues[k] = v
+				}
+				if expressionAttributeNames == nil {
+					expressionAttributeNames = names
+				} else {
+					for k, v := range names {
+						expressionAttributeNames[k] = v
+					}
+				}
+			}
 		case dynamo.Thing:
 			prefix := v.HashKey()
 			suffix := v.SortKey()
@@ -103,9 +131,9 @@ func (db *Storage[T]) reqQuery(
 
 	req := &dynamodb.QueryInput{
 		KeyConditionExpression:    aws.String(expr),
-		ExpressionAttributeValues: exprOf(gen),
+		ExpressionAttributeValues: expressionAttributeValues,
 		ProjectionExpression:      db.schema.Projection,
-		ExpressionAttributeNames:  db.schema.ExpectedAttributeNames,
+		ExpressionAttributeNames:  expressionAttributeNames,
 		TableName:                 db.table,
 		IndexName:                 db.index,
 		Limit:                     limit,
