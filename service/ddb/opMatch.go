@@ -14,7 +14,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/fogfish/curie"
 	"github.com/fogfish/dynamo/v3"
 )
 
@@ -111,6 +110,10 @@ func (db *Storage[T]) reqQuery(
 					}
 				}
 			}
+		case interface {
+			Cursor() map[string]types.AttributeValue
+		}:
+			exclusiveStartKey = v.Cursor()
 		case dynamo.Thing:
 			prefix := v.HashKey()
 			suffix := v.SortKey()
@@ -158,34 +161,34 @@ func exprOf(gen map[string]types.AttributeValue) (val map[string]types.Attribute
 	return
 }
 
-type cursor struct{ hashKey, sortKey string }
+// type cursor struct{ hashKey, sortKey string }
 
-func (c cursor) HashKey() curie.IRI { return curie.IRI(c.hashKey) }
-func (c cursor) SortKey() curie.IRI { return curie.IRI(c.sortKey) }
+// func (c cursor) HashKey() curie.IRI { return curie.IRI(c.hashKey) }
+// func (c cursor) SortKey() curie.IRI { return curie.IRI(c.sortKey) }
 
 func lastKeyToCursor[T dynamo.Thing](codec *codec[T], val *dynamodb.QueryOutput) interface{ MatcherOpt(T) } {
 	if val.LastEvaluatedKey == nil {
 		return nil
 	}
 
-	var hkey, skey string
+	// var hkey, skey string
 
 	key := val.LastEvaluatedKey
-	prefix, isPrefix := key[codec.pkPrefix]
-	if isPrefix {
-		switch v := prefix.(type) {
-		case *types.AttributeValueMemberS:
-			hkey = v.Value
-		}
-	}
+	// prefix, isPrefix := key[codec.pkPrefix]
+	// if isPrefix {
+	// 	switch v := prefix.(type) {
+	// 	case *types.AttributeValueMemberS:
+	// 		hkey = v.Value
+	// 	}
+	// }
 
-	suffix, isSuffix := key[codec.skSuffix]
-	if isSuffix {
-		switch v := suffix.(type) {
-		case *types.AttributeValueMemberS:
-			skey = v.Value
-		}
-	}
+	// suffix, isSuffix := key[codec.skSuffix]
+	// if isSuffix {
+	// 	switch v := suffix.(type) {
+	// 	case *types.AttributeValueMemberS:
+	// 		skey = v.Value
+	// 	}
+	// }
 
-	return dynamo.Cursor[T](&cursor{hashKey: hkey, sortKey: skey})
+	return dynamo.Cursor[T](key)
 }

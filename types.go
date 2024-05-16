@@ -15,6 +15,7 @@ package dynamo
 import (
 	"context"
 
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/fogfish/curie"
 )
 
@@ -110,8 +111,17 @@ func (limit[T]) MatcherOpt(T) {}
 func (limit limit[T]) Limit() int32 { return int32(limit) }
 
 // Cursor option for Match
-func Cursor[T Thing](c Thing) interface{ MatcherOpt(T) } { return cursor[T]{c} }
+func Cursor[T Thing](c map[string]types.AttributeValue) interface{ MatcherOpt(T) } {
+	return cursor[T]{c}
+}
 
-type cursor[T Thing] struct{ Thing }
+type cursor[T Thing] struct {
+	LastEvaluatedKey map[string]types.AttributeValue
+}
 
 func (cursor[T]) MatcherOpt(T) {}
+
+func (cursor cursor[T]) Cursor() map[string]types.AttributeValue {
+	// cast to map[string]types.AttributeValue
+	return cursor.LastEvaluatedKey
+}
